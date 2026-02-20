@@ -157,21 +157,17 @@ tcs-ai-hackathon/
 
 ## Build & Run Commands
 
-> **Note**: Update this section once the tech stack is chosen.
-
-<!-- Example entries to fill in later:
 - **Install dependencies**: `pip install -r requirements.txt`
-- **Run dev server**: `uvicorn main:app --reload --port 8000`
+- **Run dev server**: `uvicorn src.main:app --reload --port 8000`
 - **Run tests**: `pytest`
-- **Lint**: `flake8 .`
--->
 
 ## Tech Stack
 
-> **Note**: Update this section as decisions are made.
-
-<!-- Example:
-- **Language**: Python 3.11
+- **Language**: Python 3.11+
 - **Framework**: FastAPI
-- **AI/ML**: Claude API / Anthropic SDK
--->
+- **Database**: SQLite (via stdlib `sqlite3`)
+- **Orchestration**: LangGraph + LangChain
+- **LLM**: ChatOpenAI (via `langchain-openai`)
+- **Market data**: yfinance
+- **Web search**: DuckDuckGo Search (via `langchain-community`)
+- **Validation**: Pydantic v2
