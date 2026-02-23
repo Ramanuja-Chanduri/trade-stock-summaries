@@ -6,6 +6,11 @@ slimmed-down list of filtered trades for downstream consumption.
 
 from typing import Any, Dict, List
 
+from src.logger import get_logger
+
+logger = get_logger(__name__)
+
+
 
 def filter_extract_node(state: dict) -> dict:
     """LangGraph pipeline node that filters and extracts key data.
@@ -19,6 +24,9 @@ def filter_extract_node(state: dict) -> dict:
         filtered_trades – trades trimmed to essential fields only
     """
     trades: List[Dict[str, Any]] = state.get("trades", [])
+    session_id = state.get("session_id", "unknown")
+
+    logger.info(f"Starting filter_extract for session {session_id}: {len(trades)} trades")
 
     tickers: set = set()
     domains: set = set()
@@ -46,6 +54,10 @@ def filter_extract_node(state: dict) -> dict:
             domains.add(domain)
 
         filtered_trades.append({k: trade.get(k) for k in keep_fields})
+
+    logger.info(f"Filter_extract completed for session {session_id}: "
+                f"{len(tickers)} tickers, {len(domains)} domains, "
+                f"{len(filtered_trades)} filtered trades")
 
     return {
         "tickers": sorted(tickers),

@@ -7,6 +7,9 @@ into structured JSON payloads and persists them via ``store_enrichment``.
 from typing import Any, Dict, List
 
 from src.database import store_enrichment
+from src.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def build_enrichment_node(state: dict) -> dict:
@@ -28,21 +31,31 @@ def build_enrichment_node(state: dict) -> dict:
     domain_data: Dict[str, str] = state.get("domain_data", {})
     session_id: str = state["session_id"]
 
+    logger.info(f"Starting enrichment building for session {session_id}")
+
     ticker_enrichment: Dict[str, Dict[str, Any]] = {}
 
     all_tickers = sorted(set(list(stock_data.keys()) + list(company_data.keys())))
+    logger.info(f"Building enrichment for {len(all_tickers)} tickers in session {session_id}")
+
     for ticker in all_tickers:
         ticker_enrichment[ticker] = {
             "company_performance_summary": company_data.get(ticker, ""),
             "stock_performance": stock_data.get(ticker, {}),
         }
 
-        store_enrichment(
-            session_id,
-            data_type="ticker",
-            reference_id=ticker,
-            data_json=ticker_enrichment[ticker],
-        )
+        try:
+            store_enrichment(
+                session_id,
+                data_type="ticker",
+                reference_id=ticker,
+                data_json=ticker_enrichment[ticker],
+            )
+            logger.debug(f"Stored enrichment for ticker {ticker} in session {session_id}")
+        except Exception as e:
+            logger.error(f"Failed to store enrichment for ticker {ticker} in session {session_id}: {e}")
+
+    logger.info(f"Stored enrichment for {len(all_tickers)} tickers in session {session_id}")
 
     # Build a mapping of domain -> tickers present in the trade data
     filtered_trades: list = state.get("filtered_trades", [])
@@ -57,18 +70,27 @@ def build_enrichment_node(state: dict) -> dict:
 
     domain_enrichment: Dict[str, Dict[str, Any]] = {}
 
+    logger.info(f"Building enrichment for {len(domain_data)} domains in session {session_id}")
+
     for domain in sorted(domain_data.keys()):
         domain_enrichment[domain] = {
             "domain_performance_summary": domain_data.get(domain, ""),
             "tickers_in_domain": sorted(domain_tickers.get(domain, [])),
         }
 
-        store_enrichment(
-            session_id,
-            data_type="domain",
-            reference_id=domain,
-            data_json=domain_enrichment[domain],
-        )
+        try:
+            store_enrichment(
+                session_id,
+                data_type="domain",
+                reference_id=domain,
+                data_json=domain_enrichment[domain],
+            )
+            logger.debug(f"Stored enrichment for domain {domain} in session {session_id}")
+        except Exception as e:
+            logger.error(f"Failed to store enrichment for domain {domain} in session {session_id}: {e}")
+
+    logger.info(f"Stored enrichment for {len(domain_data)} domains in session {session_id}")
+    logger.info(f"Enrichment building completed for session {session_id}")
 
     return {
         "ticker_enrichment_json": ticker_enrichment,

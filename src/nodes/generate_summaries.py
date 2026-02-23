@@ -12,6 +12,9 @@ from typing import Any, Dict, List
 
 from src.database import store_summary
 from src.llm_client import call_llm
+from src.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def _build_overall_context(
@@ -85,6 +88,9 @@ def generate_summaries_node(state: dict) -> dict:
     ticker_enrichment: Dict[str, Any] = state.get("ticker_enrichment_json", {})
     domain_enrichment: Dict[str, Any] = state.get("domain_enrichment_json", {})
 
+    logger.info(f"Starting summary generation for session {session_id}: "
+                f"{len(trades)} trades, {len(tickers)} tickers, {len(domains)} domains")
+
     overall_context = _build_overall_context(trades, state)
 
     overall_system = "You are a senior financial analyst."
@@ -101,8 +107,14 @@ def generate_summaries_node(state: dict) -> dict:
         "Write 300-400 words in clean markdown format."
     )
 
-    overall_summary = call_llm(overall_prompt, system_prompt=overall_system)
-    store_summary(session_id, "overall", overall_summary)
+    logger.info(f"Generating overall summary for session {session_id}")
+    try:
+        overall_summary = call_llm(overall_prompt, system_prompt=overall_system)
+        store_summary(session_id, "overall", overall_summary)
+        logger.info(f"Generated and stored overall summary for session {session_id}")
+    except Exception as e:
+        logger.error(f"Failed to generate overall summary for session {session_id}: {e}")
+        overall_summary = f"Error generating summary: {e}"
 
     # Group trades by ticker
     ticker_trades: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
@@ -110,6 +122,8 @@ def generate_summaries_node(state: dict) -> dict:
         ticker_trades[t.get("ticker", "")].append(t)
 
     ticker_summaries: Dict[str, str] = {}
+
+    logger.info(f"Generating summaries for {len(tickers)} tickers in session {session_id}")
 
     for ticker in tickers:
         t_trades = ticker_trades.get(ticker, [])
@@ -128,9 +142,16 @@ def generate_summaries_node(state: dict) -> dict:
             "Write 150-200 words in clean markdown format."
         )
 
-        summary = call_llm(ticker_prompt, system_prompt=ticker_system)
-        ticker_summaries[ticker] = summary
-        store_summary(session_id, "ticker", summary, reference_id=ticker)
+        try:
+            summary = call_llm(ticker_prompt, system_prompt=ticker_system)
+            ticker_summaries[ticker] = summary
+            store_summary(session_id, "ticker", summary, reference_id=ticker)
+            logger.debug(f"Generated summary for ticker {ticker} in session {session_id}")
+        except Exception as e:
+            logger.error(f"Failed to generate summary for ticker {ticker} in session {session_id}: {e}")
+            ticker_summaries[ticker] = f"Error generating summary: {e}"
+
+    logger.info(f"Generated summaries for {len(ticker_summaries)} tickers in session {session_id}")
 
     # Group trades by domain
     domain_trades: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
@@ -140,6 +161,8 @@ def generate_summaries_node(state: dict) -> dict:
             domain_trades[domain].append(t)
 
     domain_summaries: Dict[str, str] = {}
+
+    logger.info(f"Generating summaries for {len(domains)} domains in session {session_id}")
 
     for domain in domains:
         d_trades = domain_trades.get(domain, [])
@@ -158,9 +181,17 @@ def generate_summaries_node(state: dict) -> dict:
             "Write 150-200 words in clean markdown format."
         )
 
-        summary = call_llm(domain_prompt, system_prompt=domain_system)
-        domain_summaries[domain] = summary
-        store_summary(session_id, "domain", summary, reference_id=domain)
+        try:
+            summary = call_llm(domain_prompt, system_prompt=domain_system)
+            domain_summaries[domain] = summary
+            store_summary(session_id, "domain", summary, reference_id=domain)
+            logger.debug(f"Generated summary for domain {domain} in session {session_id}")
+        except Exception as e:
+            logger.error(f"Failed to generate summary for domain {domain} in session {session_id}: {e}")
+            domain_summaries[domain] = f"Error generating summary: {e}"
+
+    logger.info(f"Generated summaries for {len(domain_summaries)} domains in session {session_id}")
+    logger.info(f"Summary generation completed for session {session_id}")
 
     return {
         "overall_summary": overall_summary,

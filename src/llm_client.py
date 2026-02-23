@@ -8,25 +8,20 @@ import os
 from typing import List, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_groq import ChatGroq
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.tools import DuckDuckGoSearchResults
 
+from src.config import get_settings
+from src.logger import get_logger
 
-_API_KEY = os.environ.get("GENAILAB_API_KEY")
-_BASE_URL = "https://genailab.tcs.in"
+logger = get_logger(__name__)
 
-llm = ChatOpenAI(
-    model="azure_ai/genailab-maas-Llama-4-Maverick-17B-128E-Instruct-FP8",
-    temperature=0.3,
-    base_url=_BASE_URL,
-    api_key=_API_KEY,
-)
+settings = get_settings()
 
-embeddings_model = OpenAIEmbeddings(
-    model="azure/genailab-maas-text-embedding-3-large",
-    base_url=_BASE_URL,
-    api_key=_API_KEY,
-)
+llm = ChatGroq(model="openai/gpt-oss-20b", api_key=settings.GROQ_API_KEY, temperature=0.7)
+
+embeddings_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 search_tool = DuckDuckGoSearchResults(max_results=5)
 
@@ -46,10 +41,14 @@ def call_llm(prompt: str, system_prompt: Optional[str] = None) -> str:
         messages.append(SystemMessage(content=system_prompt))
     messages.append(HumanMessage(content=prompt))
 
+    logger.debug(f"Calling LLM with prompt length: {len(prompt)} chars")
+    
     try:
         response = llm.invoke(messages)
+        logger.debug(f"LLM response received, length: {len(response.content)} chars")
         return response.content
     except Exception as e:
+        logger.error(f"Error calling LLM: {e}")
         return f"Error calling LLM: {e}"
 
 
@@ -66,10 +65,14 @@ def call_llm_with_search(prompt: str) -> str:
     Returns:
         The LLM-summarised response informed by web search results.
     """
+    logger.info(f"Starting web search for query: {prompt[:100]}...")
+    
     # Step 1: Web search
     try:
         search_results = search_tool.invoke(prompt)
-    except Exception:
+        logger.debug(f"Search completed, results length: {len(search_results)} chars")
+    except Exception as e:
+        logger.warning(f"Search failed: {e}")
         search_results = "No search results available"
 
     # Step 2: Build enriched prompt
@@ -86,24 +89,36 @@ def call_llm_with_search(prompt: str) -> str:
         HumanMessage(content=enriched_prompt),
     ]
 
+    logger.debug(f"Calling LLM with search-augmented prompt, length: {len(enriched_prompt)} chars")
+    
     try:
         response = llm.invoke(messages)
+        logger.info(f"LLM with search completed, response length: {len(response.content)} chars")
         return response.content
     except Exception as e:
+        logger.error(f"Error calling LLM with search: {e}")
         return f"Error calling LLM with search: {e}"
 
 
 def get_embedding(text: str) -> list:
     """Return the embedding vector for a single text string."""
+    logger.debug(f"Generating embedding for text length: {len(text)} chars")
     try:
-        return embeddings_model.embed_query(text)
+        embedding = embeddings_model.embed_query(text)
+        logger.debug(f"Embedding generated, dimensions: {len(embedding)}")
+        return embedding
     except Exception as e:
+        logger.error(f"Error generating embedding: {e}")
         return []
 
 
 def get_embeddings_batch(texts: List[str]) -> list:
     """Return embedding vectors for a list of text strings."""
+    logger.debug(f"Generating embeddings batch for {len(texts)} texts")
     try:
-        return embeddings_model.embed_documents(texts)
+        embeddings = embeddings_model.embed_documents(texts)
+        logger.debug(f"Batch embeddings generated, count: {len(embeddings)}")
+        return embeddings
     except Exception as e:
+        logger.error(f"Error generating batch embeddings: {e}")
         return []

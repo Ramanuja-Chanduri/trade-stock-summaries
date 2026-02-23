@@ -10,6 +10,10 @@ import uuid
 from typing import Any, Dict, List
 
 from src.database import store_trades
+from src.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 
 def _normalize_trade(row: Dict[str, Any]) -> Dict[str, Any]:
@@ -19,11 +23,14 @@ def _normalize_trade(row: Dict[str, Any]) -> Dict[str, Any]:
     downstream nodes always receive a uniform structure.
     """
     trade: Dict[str, Any] = {}
+    trade_id = str(row.get("trade_id") or "").strip()
+
 
     # trade_id — auto-generate if missing
-    trade["trade_id"] = (
-        str(row.get("trade_id") or "").strip() or uuid.uuid4().hex[:12]
-    )
+    trade["trade_id"] = trade_id or uuid.uuid4().hex[:12]
+    if not trade_id:
+        logger.debug(f"Auto-generated trade_id: {trade['trade_id']}")
+
 
     trade["timestamp"] = str(row.get("timestamp") or "").strip()
 
@@ -46,12 +53,15 @@ def _normalize_trade(row: Dict[str, Any]) -> Dict[str, Any]:
     try:
         trade["quantity"] = int(float(row.get("quantity", 0)))
     except (ValueError, TypeError):
+        logger.warning(f"Invalid quantity for trade {trade['trade_id']}: {row.get('quantity')}")
         trade["quantity"] = 0
 
     try:
         trade["price"] = float(row.get("price", 0))
     except (ValueError, TypeError):
+        logger.warning(f"Invalid price for trade {trade['trade_id']}: {row.get('price')}")
         trade["price"] = 0.0
+
 
     # total_value — calculate from quantity * price if missing/zero
     try:
@@ -87,14 +97,18 @@ def ingest_node(state: dict) -> dict:
     file_type: str = state["file_type"]
     session_id: str = state["session_id"]
 
+    logger.info(f"Starting ingestion for session {session_id}, file type: {file_type}")
+
     text = raw_content.decode("utf-8")
 
     raw_rows: List[Dict[str, Any]] = []
 
     if file_type == "csv":
+        logger.debug(f"Parsing CSV data for session {session_id}")
         reader = csv.DictReader(io.StringIO(text))
         raw_rows = list(reader)
     else:
+        logger.debug(f"Parsing JSON data for session {session_id}")
         data = json.loads(text)
         if isinstance(data, list):
             raw_rows = data
@@ -103,9 +117,18 @@ def ingest_node(state: dict) -> dict:
         else:
             raw_rows = [data]
 
+    logger.info(f"Parsed {len(raw_rows)} raw rows for session {session_id}")
+
     trades = [_normalize_trade(row) for row in raw_rows]
 
-    store_trades(trades, session_id)
+    logger.info(f"Normalized {len(trades)} trades for session {session_id}")
+
+    try:
+        inserted = store_trades(trades, session_id)
+        logger.info(f"Stored {inserted} trades in database for session {session_id}")
+    except Exception as e:
+        logger.error(f"Failed to store trades for session {session_id}: {e}")
+        raise
 
     return {
         "trades": trades,

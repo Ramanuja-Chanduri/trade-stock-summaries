@@ -9,6 +9,9 @@ from collections import Counter, defaultdict
 from typing import Any, Dict, List
 
 from src.database import store_metric
+from src.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def calculate_metrics_node(state: dict) -> dict:
@@ -27,6 +30,8 @@ def calculate_metrics_node(state: dict) -> dict:
     session_id: str = state["session_id"]
     tickers: List[str] = state.get("tickers", [])
     domains: List[str] = state.get("domains", [])
+
+    logger.info(f"Starting metrics calculation for session {session_id}: {len(trades)} trades")
 
     total_trades = len(trades)
     total_volume = sum(t.get("total_value", 0) for t in trades)
@@ -64,12 +69,18 @@ def calculate_metrics_node(state: dict) -> dict:
         "top_traded_domain": top_traded_domain,
     }
 
+    logger.info(f"Calculated overall metrics for session {session_id}: "
+                f"total_trades={total_trades}, total_volume={total_volume:.2f}, "
+                f"buy_count={buy_count}, sell_count={sell_count}")
+
     for name, value in overall_metrics.items():
         store_metric(session_id, name, value, category="overall")
 
     ticker_trades: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for t in trades:
         ticker_trades[t.get("ticker", "")].append(t)
+
+    logger.info(f"Calculating metrics for {len(tickers)} tickers in session {session_id}")
 
     for ticker in tickers:
         t_trades = ticker_trades.get(ticker, [])
@@ -101,9 +112,13 @@ def calculate_metrics_node(state: dict) -> dict:
             reference_id=ticker,
         )
 
+    logger.info(f"Stored metrics for {len(tickers)} tickers in session {session_id}")
+
     domain_trades: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for t in trades:
         domain_trades[t.get("domain", "")].append(t)
+
+    logger.info(f"Calculating metrics for {len(domains)} domains in session {session_id}")
 
     for domain in domains:
         d_trades = domain_trades.get(domain, [])
@@ -126,5 +141,8 @@ def calculate_metrics_node(state: dict) -> dict:
             category="domain",
             reference_id=domain,
         )
+
+    logger.info(f"Stored metrics for {len(domains)} domains in session {session_id}")
+    logger.info(f"Metrics calculation completed for session {session_id}")
 
     return {"metrics_computed": True}

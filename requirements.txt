@@ -5,6 +5,8 @@ pydantic
 langgraph
 langchain-core
 langchain-groq
+langchain-huggingface
+sentence-transformers
 langchain-community
 duckduckgo-search
 yfinance

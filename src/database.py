@@ -9,6 +9,10 @@ import sqlite3
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
+from src.logger import get_logger
+
+logger = get_logger(__name__)
+
 DB_PATH = "trade_summary.db"
 
 def get_db() -> sqlite3.Connection:
@@ -76,10 +80,15 @@ CREATE INDEX IF NOT EXISTS idx_enrichment_session ON enrichment_data (session_id
 
 def init_db() -> None:
     """Create all tables and indexes if they do not already exist."""
+    logger.info(f"Initializing database at {DB_PATH}")
     conn = get_db()
     try:
         conn.executescript(_SCHEMA_SQL)
         conn.commit()
+        logger.info("Database schema initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize database schema: {e}")
+        raise
     finally:
         conn.close()
 
@@ -90,6 +99,7 @@ def store_trades(trades: List[Dict[str, Any]], session_id: str) -> int:
     Uses INSERT OR IGNORE so duplicate trade_ids are silently skipped.
     Returns the number of rows actually inserted.
     """
+    logger.debug(f"Storing {len(trades)} trades for session {session_id}")
     conn = get_db()
     try:
         cursor = conn.cursor()
@@ -121,7 +131,11 @@ def store_trades(trades: List[Dict[str, Any]], session_id: str) -> int:
             )
             inserted += cursor.rowcount
         conn.commit()
+        logger.debug(f"Inserted {inserted} trades for session {session_id}")
         return inserted
+    except Exception as e:
+        logger.error(f"Failed to store trades for session {session_id}: {e}")
+        raise
     finally:
         conn.close()
 
@@ -134,6 +148,7 @@ def store_metric(
     reference_id: Optional[str] = None,
 ) -> None:
     """Insert a single metric row."""
+    logger.debug(f"Storing metric {metric_name} for session {session_id}, category={category}")
     conn = get_db()
     try:
         conn.execute(
@@ -144,6 +159,10 @@ def store_metric(
             (session_id, metric_name, metric_value, category, reference_id),
         )
         conn.commit()
+        logger.debug(f"Stored metric {metric_name} for session {session_id}")
+    except Exception as e:
+        logger.error(f"Failed to store metric {metric_name} for session {session_id}: {e}")
+        raise
     finally:
         conn.close()
 
@@ -155,6 +174,7 @@ def store_enrichment(
     data_json: Any,
 ) -> None:
     """Insert an enrichment record. *data_json* is serialised to a JSON string."""
+    logger.debug(f"Storing enrichment {data_type} for session {session_id}, reference={reference_id}")
     conn = get_db()
     try:
         conn.execute(
@@ -165,6 +185,10 @@ def store_enrichment(
             (session_id, data_type, reference_id, json.dumps(data_json)),
         )
         conn.commit()
+        logger.debug(f"Stored enrichment {data_type} for session {session_id}")
+    except Exception as e:
+        logger.error(f"Failed to store enrichment {data_type} for session {session_id}: {e}")
+        raise
     finally:
         conn.close()
 
@@ -176,6 +200,7 @@ def store_summary(
     reference_id: Optional[str] = None,
 ) -> None:
     """Insert a summary record."""
+    logger.debug(f"Storing summary {summary_type} for session {session_id}, reference={reference_id}")
     conn = get_db()
     try:
         conn.execute(
@@ -186,6 +211,10 @@ def store_summary(
             (session_id, summary_type, reference_id, summary_text),
         )
         conn.commit()
+        logger.debug(f"Stored summary {summary_type} for session {session_id}")
+    except Exception as e:
+        logger.error(f"Failed to store summary {summary_type} for session {session_id}: {e}")
+        raise
     finally:
         conn.close()
 
@@ -196,12 +225,14 @@ def store_summary(
 
 def get_trades_by_session(session_id: str) -> List[Dict[str, Any]]:
     """Return all trades for a given session as a list of dicts."""
+    logger.debug(f"Querying trades for session {session_id}")
     conn = get_db()
     try:
         rows = conn.execute(
             "SELECT * FROM raw_trades WHERE session_id = ? ORDER BY timestamp",
             (session_id,),
         ).fetchall()
+        logger.debug(f"Retrieved {len(rows)} trades for session {session_id}")
         return [dict(r) for r in rows]
     finally:
         conn.close()
@@ -209,20 +240,24 @@ def get_trades_by_session(session_id: str) -> List[Dict[str, Any]]:
 
 def get_trades_grouped_by_ticker(session_id: str) -> Dict[str, List[Dict[str, Any]]]:
     """Return trades for a session grouped by ticker symbol."""
+    logger.debug(f"Querying trades grouped by ticker for session {session_id}")
     trades = get_trades_by_session(session_id)
     grouped: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for t in trades:
         grouped[t["ticker"]].append(t)
+    logger.debug(f"Grouped trades into {len(grouped)} tickers for session {session_id}")
     return dict(grouped)
 
 
 def get_trades_grouped_by_domain(session_id: str) -> Dict[str, List[Dict[str, Any]]]:
     """Return trades for a session grouped by domain."""
+    logger.debug(f"Querying trades grouped by domain for session {session_id}")
     trades = get_trades_by_session(session_id)
     grouped: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for t in trades:
         if t.get("domain"):
             grouped[t["domain"]].append(t)
+    logger.debug(f"Grouped trades into {len(grouped)} domains for session {session_id}")
     return dict(grouped)
 
 
@@ -232,6 +267,7 @@ def get_enrichment(
     reference_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Retrieve enrichment records, optionally filtered by data_type and reference_id."""
+    logger.debug(f"Querying enrichment for session {session_id}, type={data_type}, ref={reference_id}")
     conn = get_db()
     try:
         query = "SELECT * FROM enrichment_data WHERE session_id = ?"
@@ -255,6 +291,7 @@ def get_enrichment(
                 except (json.JSONDecodeError, TypeError):
                     pass
             results.append(d)
+        logger.debug(f"Retrieved {len(results)} enrichment records for session {session_id}")
         return results
     finally:
         conn.close()
@@ -262,6 +299,7 @@ def get_enrichment(
 
 def get_metrics_by_session(session_id: str) -> List[Dict[str, Any]]:
     """Return all metric rows for a given session."""
+    logger.debug(f"Querying metrics for session {session_id}")
     conn = get_db()
     try:
         rows = conn.execute(
@@ -269,6 +307,7 @@ def get_metrics_by_session(session_id: str) -> List[Dict[str, Any]]:
             "FROM metrics WHERE session_id = ?",
             (session_id,),
         ).fetchall()
+        logger.debug(f"Retrieved {len(rows)} metrics for session {session_id}")
         return [dict(r) for r in rows]
     finally:
         conn.close()
@@ -280,6 +319,7 @@ def get_summary(
     reference_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Return a single summary matching the criteria, or None."""
+    logger.debug(f"Querying summary for session {session_id}, type={summary_type}, ref={reference_id}")
     conn = get_db()
     try:
         if reference_id is not None:
@@ -292,6 +332,10 @@ def get_summary(
                 "SELECT * FROM summaries WHERE session_id = ? AND summary_type = ? AND reference_id IS NULL",
                 (session_id, summary_type),
             ).fetchone()
+        if row:
+            logger.debug(f"Found summary for session {session_id}, type={summary_type}")
+        else:
+            logger.debug(f"No summary found for session {session_id}, type={summary_type}")
         return dict(row) if row else None
     finally:
         conn.close()

@@ -9,7 +9,11 @@ from typing import Any, Dict, List, Optional
 from langgraph.graph import StateGraph, END
 from typing_extensions import TypedDict
 
+from src.logger import get_logger
 from src.nodes.ingest import ingest_node
+
+logger = get_logger(__name__)
+
 from src.nodes.filter_extract import filter_extract_node
 from src.nodes.calculate_metrics import calculate_metrics_node
 from src.nodes.fetch_enrichment import fetch_enrichment_node
@@ -59,10 +63,12 @@ def build_pipeline() -> StateGraph:
         ingest → filter_extract → calculate_metrics →
         fetch_enrichment → build_enrichment → generate_summaries → END
     """
+    logger.info("Building LangGraph pipeline")
     graph = StateGraph(PipelineState)
 
     # Add nodes
     graph.add_node("ingest", ingest_node)
+
     graph.add_node("filter_extract", filter_extract_node)
     graph.add_node("calculate_metrics", calculate_metrics_node)
     graph.add_node("fetch_enrichment", fetch_enrichment_node)
@@ -78,7 +84,10 @@ def build_pipeline() -> StateGraph:
     graph.add_edge("build_enrichment", "generate_summaries")
     graph.add_edge("generate_summaries", END)
 
-    return graph.compile()
+    compiled = graph.compile()
+    logger.info("Pipeline compiled successfully")
+    return compiled
+
 
 
 async def run_pipeline(
@@ -96,6 +105,7 @@ async def run_pipeline(
     Returns:
         A dict with ``trade_count``, ``tickers``, and ``domains``.
     """
+    logger.info(f"Starting pipeline execution for session {session_id}")
     pipeline = build_pipeline()
 
     initial_state: Dict[str, Any] = {
@@ -104,10 +114,17 @@ async def run_pipeline(
         "session_id": session_id,
     }
 
-    result = await pipeline.ainvoke(initial_state)
-
-    return {
-        "trade_count": result.get("trade_count", 0),
-        "tickers": result.get("tickers", []),
-        "domains": result.get("domains", []),
-    }
+    try:
+        result = await pipeline.ainvoke(initial_state)
+        logger.info(f"Pipeline execution completed for session {session_id}: "
+                   f"trade_count={result.get('trade_count', 0)}, "
+                   f"tickers={len(result.get('tickers', []))}, "
+                   f"domains={len(result.get('domains', []))}")
+        return {
+            "trade_count": result.get("trade_count", 0),
+            "tickers": result.get("tickers", []),
+            "domains": result.get("domains", []),
+        }
+    except Exception as e:
+        logger.error(f"Pipeline execution failed for session {session_id}: {e}")
+        raise
