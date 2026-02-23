@@ -125,10 +125,15 @@ def ingest_node(state: dict) -> dict:
 
     try:
         inserted = store_trades(trades, session_id)
-        logger.info(f"Stored {inserted} trades in database for session {session_id}")
+        if inserted == 0 and len(trades) > 0:
+            logger.warning(f"Stored 0 trades in database for session {session_id} (attempted {len(trades)}). "
+                          f"This may indicate duplicate trade_ids within the same session.")
+        else:
+            logger.info(f"Stored {inserted}/{len(trades)} trades in database for session {session_id}")
     except Exception as e:
         logger.error(f"Failed to store trades for session {session_id}: {e}")
         raise
+
 
     return {
         "trades": trades,

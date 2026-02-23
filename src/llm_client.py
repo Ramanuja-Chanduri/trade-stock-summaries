@@ -9,8 +9,9 @@ from typing import List, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
+from langchain_ollama import ChatOllama
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.tools import DuckDuckGoSearchResults
+from langchain_community.tools import DuckDuckGoSearchResults, TavilySearchResults
 
 from src.config import get_settings
 from src.logger import get_logger
@@ -19,11 +20,13 @@ logger = get_logger(__name__)
 
 settings = get_settings()
 
-llm = ChatGroq(model="openai/gpt-oss-20b", api_key=settings.GROQ_API_KEY, temperature=0.7)
+# llm = ChatGroq(model="openai/gpt-oss-20b", api_key=settings.GROQ_API_KEY, temperature=0.7)
+llm = ChatOllama(model="llama3.2:1b", temperature=0.7)
 
 embeddings_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
-search_tool = DuckDuckGoSearchResults(max_results=5)
+# search_tool = DuckDuckGoSearchResults(max_results=5)
+search_tool = TavilySearchResults(api_key=settings.TAVILY_API_KEY, max_results=5)
 
 
 def call_llm(prompt: str, system_prompt: Optional[str] = None) -> str:

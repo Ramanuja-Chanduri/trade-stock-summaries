@@ -25,7 +25,7 @@ def get_db() -> sqlite3.Connection:
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS raw_trades (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    trade_id     TEXT UNIQUE NOT NULL,
+    trade_id     TEXT NOT NULL,
     timestamp    TEXT,
     ticker       TEXT NOT NULL,
     company_name TEXT,
@@ -38,8 +38,10 @@ CREATE TABLE IF NOT EXISTS raw_trades (
     exchange     TEXT,
     trader_id    TEXT,
     session_id   TEXT NOT NULL,
-    created_at   TEXT DEFAULT (datetime('now'))
+    created_at   TEXT DEFAULT (datetime('now')),
+    UNIQUE(trade_id, session_id)
 );
+
 
 CREATE TABLE IF NOT EXISTS metrics (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,6 +74,8 @@ CREATE TABLE IF NOT EXISTS summaries (
 CREATE INDEX IF NOT EXISTS idx_trades_session   ON raw_trades (session_id);
 CREATE INDEX IF NOT EXISTS idx_trades_ticker    ON raw_trades (ticker);
 CREATE INDEX IF NOT EXISTS idx_trades_domain    ON raw_trades (domain);
+CREATE INDEX IF NOT EXISTS idx_trades_trade_session ON raw_trades (trade_id, session_id);
+
 CREATE INDEX IF NOT EXISTS idx_metrics_session  ON metrics (session_id);
 CREATE INDEX IF NOT EXISTS idx_summaries_session ON summaries (session_id);
 CREATE INDEX IF NOT EXISTS idx_enrichment_session ON enrichment_data (session_id);

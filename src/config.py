@@ -9,6 +9,7 @@ class Settings(BaseSettings):
 
     GROQ_API_KEY: str
     HF_TOKEN: str
+    TAVILY_API_KEY: str
 
 @lru_cache()
 def get_settings() -> Settings:
